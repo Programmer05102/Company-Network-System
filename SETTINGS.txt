@@ -1,0 +1,512 @@
+	SWITCH BASIC CONFIG
+
+en
+config t
+hostname CORE-SW1
+
+line console 0
+password cisco
+login
+logging synchronous
+exec-timeout 3 0
+exit
+
+enable password cisco
+banner motd &NO UNAUTHORISED ACCESS!!!&
+no ip domain-lookup
+
+service password-encryption
+
+username cisco password cisco
+ip domain-name cisco.com
+
+crypto key generate rsa general-keys modulus 1024
+ip ssh version 2
+
+line vty 0 15
+login local
+transport input ssh
+exit
+
+access-list 1 permit 192.168.10.0 0.0.0.255
+access-list 1 deny any
+
+line vty 0 15
+access-class 1 in
+exit
+
+do wr
+
+	ACCESS SWITCHES VLAN ASSIGNMENT
+
+int range fa0/1-2
+switchport mode trunk
+ex
+
+vlan 10
+name MGT
+vlan 20
+name LAN
+vlan 50
+name WLAN
+vlan 70
+name VOIP
+vlan 199
+name BLACKHOLE
+ex
+
+int range fa0/3-4
+switchport mode access
+switchport access vlan 20
+ex
+
+int  range fa0/5-6
+switchport mode access
+switchport vlan vlan 70
+ex
+
+int  fa0/7
+switchport mode access
+switchport access vlan 50
+ex
+
+int range fa0/8-24
+switchport mode access
+switchport access vlan 199
+shut
+ex
+
+do wr
+
+
+	SERVER VLAN ASSIGNMENT
+
+int range fa0/1-2, fa0/7
+switchport mode trunk
+ex
+
+vlan 10
+name MGT
+vlan 20
+name LAN
+vlan 50
+name WLAN
+vlan 70
+name VOIP
+vlan 90
+name INSIDE-SERVERS
+ex
+
+int range fa0/3-5
+switchport mode access
+switchport access vlan 90
+ex
+
+int fa0/6
+switchport mode access
+switchport access vlan 50
+ex
+
+do wr
+
+
+	MULTILAYER SWITCHES VLAN ASSIGNMENT
+
+int range gig1/0/3-8
+switchport mode trunk
+ex
+
+vlan 10
+name MGT
+vlan 20
+name LAN
+vlan 50
+name WLAN
+vlan 70
+name VOIP
+vlan 90
+name INSIDE-SERVERS
+ex
+
+do wr
+
+
+	ACCESS SWITCHES PORTFAST AND BPDU(Bridge Protocol Data Unit) GUARD
+
+int range fa0/3-24
+spanning-tree portfast
+spanning-tree bpduguard enable
+do wr
+
+
+	HSRP(Hot Standby Routing Protocol) AND INTER-VLAN ROUTING
+
+!
+int vlan10
+ip add 192.168.10.2 255.255.255.0
+ip helper-address 10.11.11.38
+standby 10 ip 192.168.10.1 
+!
+int vlan20
+ip add 172.16.0.2 255.255.0.0
+ip helper-address 10.11.11.38
+standby 20 ip 172.16.0.1 
+!
+int vlan50
+ip add 10.20.0.3 255.255.0.0
+ip helper-address 10.11.11.38
+standby 50 ip 10.20.0.1 
+!
+int vlan90
+ip add 10.11.11.35 255.255.255.224
+ip helper-address 10.11.11.38
+standby 90 ip 10.11.11.33
+ex
+
+do wr
+
+
+	OSPF(Open Shortest Path First) ON MULTILAYER SWITCHES
+
+!
+router ospf 35
+router-id 1.1.2.2
+network 10.2.2.8 0.0.0.3 area 0
+network 10.2.2.12 0.0.0.3 area 0
+network 192.168.10.0 0.0.0.255 area 0
+network 172.16.0.0 0.0.255.255 area 0
+network 10.20.0.0 0.0.255.255 area 0
+network 10.11.11.32 0.0.0.31 area 0
+!
+ex
+
+do wr
+
+
+	OSPF(Open Shortest Path First) ON ROUTERS
+
+!
+router ospf 35
+router-id 1.1.5.5
+network 8.0.0.0 0.255.255.255 area 0
+network 20.20.20.0 0.0.0.3 area 0
+network 30.30.30.0 0.0.0.3 area 0
+!
+ex
+
+do wr
+
+
+	FIREWALL INT AND SECURITY-LVLS
+	FIRST FIREWALL
+
+en
+
+config t
+hostname FWL1
+int gig1/3
+no shut
+ip add 10.2.2.2 255.255.255.252
+nameif  INSIDE1
+security-level 100
+ex
+int gig1/4
+no shut
+ip add 10.2.2.10 255.255.255.252
+nameif INSIDE2
+security-level 100
+ex
+int gig1/5
+no shut
+ip add 10.11.11.1 255.255.255.224
+nameif DMZ
+security-level 70
+ex
+int gig1/1
+no shut
+ip add 105.100.50.2 255.255.255.252
+nameif OUTSIDE1
+security-level 0
+ex
+int gig1/2
+no shut
+ip add 197.200.100.2 255.255.255.252
+nameif OUTSIDE2
+security-level 0
+ex
+
+wr mem
+
+
+	SECOND FIREWALL
+
+en
+
+config t
+hostname FWL2
+int gig1/3
+no shut
+ip add 10.2.2.6 255.255.255.252
+nameif  INSIDE1
+security-level 100
+ex
+int gig1/4
+no shut
+ip add 10.2.2.14 255.255.255.252
+nameif INSIDE2
+security-level 100
+ex
+int gig1/1
+no shut
+ip add 105.100.50.6 255.255.255.252
+nameif OUTSIDE1
+security-level 0
+ex
+int gig1/2
+no shut
+ip add 197.200.100.6 255.255.255.252
+nameif OUTSIDE2
+security-level 0
+ex
+
+wr mem
+
+	FIREWALL ROUTING OSPF + STATIC ROUTES
+	FIRST FIREWALL
+
+en
+config t
+route OUTSIDE1 0.0.0.0 0.0.0.0 105.100.50.1
+route OUTSIDE2 0.0.0.0 0.0.0.0 197.200.100.1 70
+router ospf 35
+router-id 1.1.8.8
+network 105.100.50.0 255.255.255.252 area 0
+network 197.200.100.0 255.255.255.252 area 0
+network 10.11.11.0 255.255.255.224 area 0
+network 10.2.2.0 255.255.255.252 area 0
+network 10.2.2.8 255.255.255.252 area 0
+ex
+
+wr mem
+
+
+	SECOND FIREWALL
+
+en
+config t
+route OUTSIDE1 0.0.0.0 0.0.0.0 105.100.50.5
+route OUTSIDE2 0.0.0.0 0.0.0.0 197.200.100.5
+router ospf 35
+router-id 1.1.9.9
+network 197.200.100.4 255.255.255.252 area 0
+network 105.100.50.4 255.255.255.252 area 0
+network 10.2.2.4 255.255.255.252 area 0
+network 10.2.2.12 255.255.255.252 area 0
+ex
+
+wr mem
+
+
+	FIREWALL NETWORK OBJECT CONFIGURATION
+	FIRST FIREWALL
+
+en
+config t
+object network INSIDE1-OUTSIDE1
+subnet 172.16.0.0 255.255.0.0
+nat (INSIDE1, OUTSIDE1) dynamic interface
+ex
+
+config t
+object network INSIDE2-OUTSIDE1
+subnet 172.16.0.0 255.255.0.0
+nat (INSIDE2, OUTSIDE1) dynamic interface
+ex
+
+config t
+object network INSIDEw1-OUTSIDEw1
+subnet 10.20.0.0 255.255.0.0
+nat (INSIDE1, OUTSIDE1) dynamic interface
+ex
+
+config t
+object network INSIDEw2-OUTSIDEw1
+subnet 10.20.0.0 255.255.0.0
+nat (INSIDE2, OUTSIDE1) dynamic interface
+ex
+
+config t
+object network INSIDE1-OUTSIDE2
+subnet 172.16.0.0 255.255.0.0
+nat (INSIDE1, OUTSIDE2) dynamic interface
+ex
+
+config t
+object network INSIDE2-OUTSIDE2
+subnet 172.16.0.0 255.255.0.0
+nat (INSIDE2, OUTSIDE2) dynamic interface
+ex
+
+config t
+object network INSIDEw1-OUTSIDEw2
+subnet 10.20.0.0 255.255.0.0
+nat (INSIDE1, OUTSIDE2) dynamic interface
+ex
+
+config t
+object network INSIDEw2-OUTSIDEw2
+subnet 10.20.0.0 255.255.0.0
+nat (INSIDE2, OUTSIDE2) dynamic interface
+ex
+
+config t
+object network DMZ-OUTSIDE1
+subnet 10.11.11.0 255.255.255.224
+nat (DMZ, OUTSIDE1) dynamic interface
+ex
+
+config t
+object network DMZ-OUTSIDE2
+subnet 10.11.11.0 255.255.255.224
+nat (DMZ, OUTSIDE2) dynamic interface
+ex
+
+wr mem
+
+
+	SECOND FIREWALL
+
+en
+config t
+object network INSIDE1-OUTSIDE1
+subnet 172.16.0.0 255.255.0.0
+nat (INSIDE1, OUTSIDE1) dynamic interface
+ex
+
+config t
+object network INSIDE2-OUTSIDE1
+subnet 172.16.0.0 255.255.0.0
+nat (INSIDE2, OUTSIDE1) dynamic interface
+ex
+
+config t
+object network INSIDEw1-OUTSIDEw1
+subnet 10.20.0.0 255.255.0.0
+nat (INSIDE1, OUTSIDE1) dynamic interface
+ex
+
+config t
+object network INSIDEw2-OUTSIDEw1
+subnet 10.20.0.0 255.255.0.0
+nat (INSIDE2, OUTSIDE1) dynamic interface
+ex
+
+config t
+object network INSIDE1-OUTSIDE2
+subnet 172.16.0.0 255.255.0.0
+nat (INSIDE1, OUTSIDE2) dynamic interface
+ex
+
+config t
+object network INSIDE2-OUTSIDE2
+subnet 172.16.0.0 255.255.0.0
+nat (INSIDE2, OUTSIDE2) dynamic interface
+ex
+
+config t
+object network INSIDEw1-OUTSIDEw2
+subnet 10.20.0.0 255.255.0.0
+nat (INSIDE1, OUTSIDE2) dynamic interface
+ex
+
+config t
+object network INSIDEw2-OUTSIDEw2
+subnet 10.20.0.0 255.255.0.0
+nat (INSIDE2, OUTSIDE2) dynamic interface
+ex
+
+wr mem
+
+
+	FIREWALL INSPECTION POLICY CONFIGURATION
+	FIRST FIREWALL
+
+en
+config t
+access-list RES extended permit icmp any any
+access-list RES extended permit tcp any any eq 80
+access-list RES extended permit tcp any any eq 53
+access-list RES extended permit udp any any eq 53
+
+access-group RES in interface DMZ
+access-group RES in interface OUTSIDE1
+access-group RES in interface OUTSIDE2
+
+wr mem
+
+
+	SECOND FIREWALL
+
+en
+config t
+access-list RES extended permit icmp any any
+access-list RES extended permit tcp any any eq 80
+access-list RES extended permit tcp any any eq 53
+access-list RES extended permit udp any any eq 53
+
+access-group RES in interface OUTSIDE1
+access-group RES in interface OUTSIDE2
+
+wr mem
+
+
+	VOIP CONFIGURATION
+
+en
+config t
+int fa0/0
+no shut
+ex
+
+int fa0/0.70
+encapsulation dot1Q 70
+ip add 172.30.0.1 255.255.0.0
+ex
+
+service dhcp
+ip dhcp pool VOIP-POOL
+network 172.30.0.0 255.255.0.0
+default-router 172.30.0.1
+option 150 ip 172.30.0.1
+exit
+
+telephony-service
+max-ephones 30
+max-dn 30
+ip source-address 172.30.0.1 port 2000
+auto assign 1 to 30
+exit
+
+ephone-dn 1
+number 401
+ephone-dn 2
+number 402
+ephone-dn 3
+number 403
+ephone-dn 4
+number 404
+ephone-dn 5
+number 405
+ephone-dn 6
+number 406
+ephone-dn 7
+number 407
+ephone-dn 8
+number 408
+ephone-dn 9
+number 409
+ephone-dn 10
+number 410
+ex
+
+do wr
